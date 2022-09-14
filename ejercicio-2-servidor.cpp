@@ -7,13 +7,13 @@
 #include<stdlib.h>
 
 //librereias usadas para el socket de red
-
 #include<unistd.h>
 #include<netdb.h>
 #include<netinet/in.h>
 #include<sys/socket.h>
 #include<sys/types.h>
 #include<arpa/inet.h>
+#include<sys/uio.h>
 
 //deteccion de errores para la conexion
 #include<errno.h>
@@ -21,18 +21,19 @@
 #include <string.h>
 
 #define SERV_PORT       8080               //puerto de comunicacion 
-#define SERV_HOST_ADDR "192.168.87.37"     //ipV4
+#define SERV_HOST_ADDR "192.168.0.255"     //ipV4
 #define BUF_SIZE        100                //tamanio de los buffeers
 #define BACKLOG         100  
 
 using namespace std;
 
-
 typedef struct element {
 	int key;
 	string __orders_id;
-	int num_trn;
+        int num_opc,num_trn;
+  
 }orders_t;
+
 
 class TablaHash {
 // tamanio de la tabla(numero de elementos)
@@ -40,7 +41,7 @@ class TablaHash {
 //  listas de los slots
 	list<orders_t> *tabla;
 public:
-
+       
 	TablaHash(int _tam);
 	int funcion_hash(orders_t elem);
 	void aniadir_elemento(orders_t elem);
@@ -184,12 +185,14 @@ int main() {
 	struct sockaddr_in servaddr,client;
 
 	int len_rx,lan_tx=0,cntr=0;
-        char buff_tx[BUF_SIZE],buff_rx[BUF_SIZE],*aux2;
-  
+	
   //definicion de los elementos de la tabla y de la tabla
         orders_t el,aux,aux1;
+        
 	TablaHash ObjTabla(5000);
 
+	char *buffer_rx,*buffer_tx;
+	
 	for (int i = 0; i < 1000000; ++i) {
 	       
 		el=gen_order_uuid(i);
@@ -242,44 +245,30 @@ int main() {
 	  } else {              
             while(1) {  
                 //esta a la espera de los mensajes del cliente
-                  len_rx = read(connfd, buff_rx, sizeof(buff_rx));
+	         len_rx = read(connfd,buffer_rx,strlen(buffer_rx));
 
-		  string aux1s="",aux2s="";
-		  char combert[7];
-		  for (int i = 0; i < strlen(buff_rx); ++i) {//realiza la cobercion del mensaje para las operaciones
 
-			aux1s=aux1s + buff_rx[i];
+		 //desserializacion del archivo
+		 FILE *archivo=fopen("temp","a+b");
 
-	      
-		  }
-		 
-		  for(int i=39; i<strlen(buff_rx);++i) {
+		 fwrite(&buffer_rx,sizeof(buffer_rx),1,archivo);
 
-		    aux2s=aux2s + buff_rx[i];
-		    
-		  }  
-		  
-       		  cout<<aux2s<<endl;
-		  char opc=buff_rx[0];
-		  aux1s.erase(aux1s.begin()+1);
-		  aux1s.erase(aux1s.begin()+1);
-		  aux1s.erase(aux1s.end()-1);
-		  aux1s.erase(aux1s.end()-1);
-		  aux1s.erase(aux1s.end()-1);
-		  string::size_type sz;
-		  aux.__orders_id=aux1s;
-		  aux.key= stoi (aux2s,&sz);
-		  cout<<aux.key<<endl;
-		  //se seleciona la operacion
-		  if (opc=='1') {
-		    
+	         fread(&aux,sizeof(orders_t),1,archivo);
+
+		 fclose(archivo);  
+		 //se seleciona la operacion
+		 if (aux.num_opc) {
+
+		          //se serializan ls datos para coberrtirlos en arrays
+		          FILE *archivo2=fopen("temp2","a+b");
+		   
 		          aux1=ObjTabla.recuperar_elemento(aux);
+			  
+			  fwrite(&aux1,sizeof(orders_t),1,archivo2);
 
-			  for (int i = 0; i < aux1.__orders_id.length(); ++i) {
+			  fread(&buffer_tx,sizeof(buffer_tx),1,archivo2);
 
-				buff_tx[i]=aux1.__orders_id[i];
-				
-			  }
+			  fclose(archivo2);
 			  
 		  } else {
 		          ObjTabla.eliminar_elemento(aux);
@@ -295,8 +284,8 @@ int main() {
 			  break; 
 		  } else {
 			//envia mensajes al cliente como respuesta	    
-		          write(connfd, buff_tx, strlen(buff_tx));
-			  cout<<"[SERVER]: "<< buff_rx<<endl;
+		    write(connfd,buffer_tx,strlen(buffer_tx));
+		    cout<<"[SERVER]: "<<aux1.__orders_id<<endl;
                 }            
             }  
         }                      
